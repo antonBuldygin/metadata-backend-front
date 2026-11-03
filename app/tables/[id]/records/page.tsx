@@ -47,7 +47,8 @@ function TableRecordsContent() {
                     for (const rf of relationFields) {
                         if (rf.targetTableName) {
                             try {
-                                optionsData[rf.systemName] = await getRecords(rf.targetTableName);
+                                const related = await getRecords(rf.targetTableName);
+                                optionsData[rf.systemName] = related;
                             } catch (e) { console.error(e); }
                         }
                     }
@@ -63,9 +64,23 @@ function TableRecordsContent() {
         return () => { ignore = true; };
     }, [id]);
 
-    const openCreateModal = () => { setFormData({}); setEditingId(null); setIsModalOpen(true); };
-    const openEditModal = (record: EntityRecord) => { setFormData(record); setEditingId(record.id as number); setIsModalOpen(true); };
-    const closeModal = () => { setIsModalOpen(false); setFormData({}); setEditingId(null); };
+    const openCreateModal = () => {
+        setFormData({});
+        setEditingId(null);
+        setIsModalOpen(true);
+    };
+
+    const openEditModal = (record: EntityRecord) => {
+        setFormData(record);
+        setEditingId(record.id as number);
+        setIsModalOpen(true);
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setFormData({});
+        setEditingId(null);
+    };
 
     const handleInputChange = (fieldName: string, value: EntityValue) => {
         setFormData((prev) => ({ ...prev, [fieldName]: value }));
@@ -75,8 +90,11 @@ function TableRecordsContent() {
         e.preventDefault();
         if (!table) return;
         try {
-            if (editingId) await updateRecord(table.systemName, editingId, formData);
-            else await createRecord(table.systemName, formData);
+            if (editingId) {
+                await updateRecord(table.systemName, editingId, formData);
+            } else {
+                await createRecord(table.systemName, formData);
+            }
             closeModal();
             await loadRecords(table.systemName);
         } catch (error) {
@@ -122,7 +140,6 @@ function TableRecordsContent() {
                         <tr key={rec.id} className="border-b hover:bg-gray-50 last:border-0">
                             <td className="p-4 text-sm text-gray-500">{rec.id}</td>
                             {fieldsForList.map((field) => {
-                                // БЭКЕНД УЖЕ ВСЕ СДЕЛАЛ ЗА НАС
                                 let val = rec[field.systemName + "_display"] || rec[field.systemName];
                                 if (typeof val === 'boolean') val = val ? "Да" : "Нет";
                                 return <td key={field.id} className="p-4 text-sm">{String(val ?? "")}</td>;
@@ -144,36 +161,64 @@ function TableRecordsContent() {
                         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                             {editingId && (
                                 <div>
-                                    <label className="block text-sm text-gray-500 mb-1">ID (системное)</label>
-                                    <input type="text" className="w-full border p-2 rounded bg-gray-100" value={editingId} disabled />
+                                    <label htmlFor="system_id" className="block text-sm text-gray-500 mb-1">ID (системное)</label>
+                                    <input id="system_id" type="text" className="w-full border p-2 rounded bg-gray-100" value={editingId} disabled />
                                 </div>
                             )}
                             {fields.filter(f => f.visibleOnDetails).map((field) => {
                                 const actualKey = Object.keys(formData).find(k => k.toLowerCase() === field.systemName.toLowerCase());
                                 const fieldValue = actualKey ? formData[actualKey] : "";
+                                const inputId = `field_${field.id}`; // Уникальный ID для связки label и input
 
                                 return (
                                     <div key={field.id}>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">{field.displayName}</label>
+                                        {/* Добавлен htmlFor */}
+                                        <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1">
+                                            {field.displayName}
+                                        </label>
+
                                         {field.type === "RELATION" ? (
-                                            <select className="w-full border p-2 rounded bg-white" value={(fieldValue as string | number) || ""} onChange={(e) => handleInputChange(field.systemName, e.target.value)}>
+                                            <select
+                                                id={inputId} // Добавлен id
+                                                className="w-full border p-2 rounded bg-white"
+                                                value={(fieldValue as string | number) || ""}
+                                                onChange={(e) => handleInputChange(field.systemName, e.target.value)}
+                                            >
                                                 <option value="">-- Выберите значение --</option>
                                                 {(relationOptions[field.systemName] || []).map((opt: EntityRecord) => {
-                                                    // Здесь тоже используем _display от бэкенда, если он есть
                                                     const displayValue = opt[field.targetDisplayField + "_display"] || opt[field.targetDisplayField || 'id'];
                                                     return <option key={opt.id} value={opt.id}>{String(displayValue)}</option>;
                                                 })}
                                             </select>
                                         ) : field.type === "BOOLEAN" ? (
-                                            <input type="checkbox" className="w-5 h-5" checked={(fieldValue as boolean) || false} onChange={(e) => handleInputChange(field.systemName, e.target.checked)} />
+                                            <input
+                                                id={inputId} // Добавлен id
+                                                type="checkbox"
+                                                className="w-5 h-5"
+                                                checked={(fieldValue as boolean) || false}
+                                                onChange={(e) => handleInputChange(field.systemName, e.target.checked)}
+                                            />
                                         ) : field.type === "DATE" || field.type === "DATETIME" ? (
-                                            <input type={field.type === "DATE" ? "date" : "datetime-local"} className="w-full border p-2 rounded" value={(fieldValue as string | number) || ""} onChange={(e) => handleInputChange(field.systemName, e.target.value)} />
+                                            <input
+                                                id={inputId} // Добавлен id
+                                                type={field.type === "DATE" ? "date" : "datetime-local"}
+                                                className="w-full border p-2 rounded"
+                                                value={(fieldValue as string | number) || ""}
+                                                onChange={(e) => handleInputChange(field.systemName, e.target.value)}
+                                            />
                                         ) : (
-                                            <input type={field.type === "INTEGER" || field.type === "DECIMAL" ? "number" : "text"} className="w-full border p-2 rounded" value={(fieldValue as string | number) || ""} onChange={(e) => handleInputChange(field.systemName, e.target.value)} />
+                                            <input
+                                                id={inputId} // Добавлен id
+                                                type={field.type === "INTEGER" || field.type === "DECIMAL" ? "number" : "text"}
+                                                className="w-full border p-2 rounded"
+                                                value={(fieldValue as string | number) || ""}
+                                                onChange={(e) => handleInputChange(field.systemName, e.target.value)}
+                                            />
                                         )}
                                     </div>
                                 );
                             })}
+
                             <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
                                 <button type="button" onClick={closeModal} className="px-4 py-2 border rounded">Отмена</button>
                                 <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded">Сохранить</button>
